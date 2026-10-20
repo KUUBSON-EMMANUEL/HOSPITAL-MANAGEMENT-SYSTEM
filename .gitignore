@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# Django
+backend/.env
+backend/staticfiles/
+backend/media/
+backend/logs/
+db.sqlite3
+*.log
+
+# Node / React
+frontend/node_modules/
+frontend/dist/
+frontend/.env
+frontend/.env.local
+frontend/coverage/
+
+# Docker
+*.pid
+
+# Editors / OS
+.vscode/*.log
+.idea/
+.DS_Store
+Thumbs.db
+
+# Test / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+
+# Secrets
+*.pem
+*.key
+!docker/nginx/certs/.gitkeep

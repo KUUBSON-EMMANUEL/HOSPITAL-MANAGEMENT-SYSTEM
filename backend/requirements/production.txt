@@ -1,0 +1,4 @@
+-r base.txt
+
+sentry-sdk==2.13.0
+django-health-check==3.18.3
