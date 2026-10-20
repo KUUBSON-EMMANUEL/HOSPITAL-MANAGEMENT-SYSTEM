@@ -1,7 +1,7 @@
 from django.conf import settings
 from django.db import models
 
-from apps.core.models import BaseModel, BranchScopedModel
+from apps.core.models import BaseModel, BranchScopedModel, max_trailing_number, next_sequence_value
 
 
 class Patient(BaseModel, BranchScopedModel):
@@ -66,12 +66,14 @@ class Patient(BaseModel, BranchScopedModel):
 def generate_patient_number(branch) -> str:
     """
     Called from PatientSerializer.create(), not Patient.save(), to keep the
-    model free of request-time side effects.
-    TODO: count()+1 is not concurrency-safe (two simultaneous registrations
-    on the same branch could collide) -- acceptable for this pass, but
-    should move to a DB sequence or an F()-based atomic counter row before
-    go-live.
+    model free of request-time side effects. Uses a row-locked counter so
+    simultaneous registrations on the same branch never collide.
     """
     prefix = settings.HMS_PATIENT_ID_PREFIX
-    sequence = Patient.all_objects.filter(branch=branch).count() + 1
+    sequence = next_sequence_value(
+        f"patient:{branch.pk}",
+        seed=lambda: max_trailing_number(
+            Patient.all_objects.filter(branch=branch).values_list("patient_number", flat=True)
+        ),
+    )
     return f"{prefix}-{branch.code}-{sequence:06d}"

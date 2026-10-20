@@ -1,7 +1,7 @@
 from django.db import models
 
 from apps.authentication.constants import ModuleCode
-from apps.core.models import BaseModel, BranchScopedModel
+from apps.core.models import BaseModel, BranchScopedModel, max_trailing_number, next_sequence_value
 
 
 class Invoice(BaseModel, BranchScopedModel):
@@ -32,13 +32,15 @@ class Invoice(BaseModel, BranchScopedModel):
 def generate_invoice_number(branch) -> str:
     """
     Called from InvoiceSerializer.create(), not Invoice.save(), to keep the
-    model free of request-time side effects.
-    TODO: count()+1 is not concurrency-safe (two simultaneous invoice
-    creations on the same branch could collide) -- acceptable for this pass,
-    but should move to a DB sequence or an F()-based atomic counter row
-    before go-live.
+    model free of request-time side effects. Uses a row-locked counter so
+    simultaneous invoice creations on the same branch never collide.
     """
-    sequence = Invoice.all_objects.filter(branch=branch).count() + 1
+    sequence = next_sequence_value(
+        f"invoice:{branch.pk}",
+        seed=lambda: max_trailing_number(
+            Invoice.all_objects.filter(branch=branch).values_list("invoice_number", flat=True)
+        ),
+    )
     return f"INV-{branch.code}-{sequence:06d}"
 
 

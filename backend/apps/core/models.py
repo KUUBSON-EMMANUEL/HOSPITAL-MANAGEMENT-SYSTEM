@@ -1,7 +1,8 @@
+import re
 import uuid
 
 from django.conf import settings
-from django.db import models
+from django.db import IntegrityError, models, transaction
 
 
 class TimeStampedModel(models.Model):
@@ -129,3 +130,43 @@ class BaseModel(TimeStampedModel, UUIDPublicIDModel, AuditableModel, SoftDeleteM
 
     class Meta:
         abstract = True
+
+
+class SequenceCounter(models.Model):
+    """
+    One row per named sequence (e.g. invoice numbers for a branch). Rows are
+    locked with SELECT ... FOR UPDATE while incrementing, so concurrent
+    requests are serialized and never receive the same value.
+    """
+
+    key = models.CharField(max_length=100, unique=True)
+    value = models.PositiveBigIntegerField(default=0)
+
+    def __str__(self) -> str:
+        return f"{self.key}={self.value}"
+
+
+def next_sequence_value(key: str, seed=lambda: 0) -> int:
+    """
+    Atomically increments and returns the counter for `key`. `seed` is called
+    only when the counter row does not exist yet, and should return the last
+    value already in use (so pre-existing records are never collided with).
+    """
+    with transaction.atomic():
+        counter = SequenceCounter.objects.select_for_update().filter(key=key).first()
+        if counter is None:
+            try:
+                with transaction.atomic():
+                    counter = SequenceCounter.objects.create(key=key, value=seed())
+            except IntegrityError:
+                # Another request created the row first; wait for its lock.
+                counter = SequenceCounter.objects.select_for_update().get(key=key)
+        counter.value += 1
+        counter.save(update_fields=["value"])
+        return counter.value
+
+
+def max_trailing_number(values) -> int:
+    """Largest trailing integer across identifiers like "INV-MAIN-000042"."""
+    numbers = [int(m.group()) for v in values if (m := re.search(r"\d+$", v))]
+    return max(numbers, default=0)
